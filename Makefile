@@ -1,7 +1,7 @@
-CFLAGS?=-Wall -Wextra -pedantic -g -O -lm -fsanitize=address
+CFLAGS?=-Wall -Wextra -pedantic -g -O -lm -fsanitize=address -fopenmp
 CC?=cc
 EXECUTABLES=simple_test test_describe_object roll_dice ray
-OBJECTS=scene.o geometry.o random.o
+OBJECTS=scene.o geometry.o random.o bvh.o
 
 # Disable bultin rules.
 .SUFFIXES:

@@ -98,6 +98,11 @@ struct material *object_material(struct object *o);
 bool object_hit(struct object *o, struct ray *r,
                 double t0, double t1, struct hit *hit);
 
+// Calculate the axis-aligned bounding box for the object.
+// Returns true if the object has a bounding box, false otherwise (e.g. infinite planes).
+// The box is stored in 'output_box'.
+bool object_aabb(struct object *o, double t0, double t1, struct aabb *output_box);
+
 // Determine whether light scatters from this hit.
 bool scattering(struct rng *rng, struct ray *r, struct hit *h, struct scattering *out);
 

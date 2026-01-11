@@ -145,6 +145,49 @@ bool object_hit(struct object *o, struct ray *r,
   }
 }
 
+bool sphere_aabb(struct sphere *s, double t0, double t1, struct aabb *output_box) {
+  (void)t0; (void)t1; 
+  output_box->min = vec_sub(s->centre, (struct vec){s->radius, s->radius, s->radius});
+  output_box->max = vec_add(s->centre, (struct vec){s->radius, s->radius, s->radius});
+  return true;
+}
+
+bool xy_rectangle_aabb(struct xy_rectangle *xy, double t0, double t1, struct aabb *output_box) {
+  (void)t0; (void)t1;
+  output_box->min = (struct vec){xy->x0, xy->y0, xy->k - 0.0001};
+  output_box->max = (struct vec){xy->x1, xy->y1, xy->k + 0.0001};
+  return true;
+}
+
+bool xz_rectangle_aabb(struct xz_rectangle *xz, double t0, double t1, struct aabb *output_box) {
+  (void)t0; (void)t1;
+  output_box->min = (struct vec){xz->x0, xz->k - 0.0001, xz->z0};
+  output_box->max = (struct vec){xz->x1, xz->k + 0.0001, xz->z1};
+  return true;
+}
+
+bool yz_rectangle_aabb(struct yz_rectangle *yz, double t0, double t1, struct aabb *output_box) {
+  (void)t0; (void)t1;
+  output_box->min = (struct vec){yz->k - 0.0001, yz->y0, yz->z0};
+  output_box->max = (struct vec){yz->k + 0.0001, yz->y1, yz->z1};
+  return true;
+}
+
+bool object_aabb(struct object *o, double t0, double t1, struct aabb *output_box) {
+  switch (o->type) {
+  case SPHERE:
+    return sphere_aabb(&o->sphere, t0, t1, output_box);
+  case XY_RECTANGLE:
+    return xy_rectangle_aabb(&o->xy_rectangle, t0, t1, output_box);
+  case XZ_RECTANGLE:
+    return xz_rectangle_aabb(&o->xz_rectangle, t0, t1, output_box);
+  case YZ_RECTANGLE:
+    return yz_rectangle_aabb(&o->yz_rectangle, t0, t1, output_box);
+  default:
+    abort();
+  }
+}
+
 bool scattering_lambertian(struct rng *rng, struct ray *r, struct hit *h, struct scattering *hit) {
   (void)r;
   struct vec bounce = random_in_unit_sphere(rng);

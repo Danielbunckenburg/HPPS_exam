@@ -3,21 +3,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <omp.h>
 #include "scene.h"
 #include "random.h"
+#include "bvh.h"
 
 // Find the closest object that intersects with the ray. Returns false if there
 // is no such object.
-bool find_hit(size_t num_objects, struct object *objects,
+bool find_hit(struct bvh_node *root,
               struct ray *r,
               double t0, double t1, struct hit *hit) {
-  double closest_so_far = t1;
-  for (size_t i = 0; i < num_objects; i++) {
-    if (object_hit(&objects[i], r, t0, closest_so_far, hit)) {
-      closest_so_far = hit->t;
-    }
-  }
-  return closest_so_far < t1;
+  return bvh_hit(root, r, t0, t1, hit);
 }
 
 // Find the colour contribution of the given ray. Uses 'find_hit' to find the
@@ -25,18 +21,18 @@ bool find_hit(size_t num_objects, struct object *objects,
 // bounces along the scene.
 struct vec colour(struct rng *rng,
                   int max_depth,
-                  size_t num_objects, struct object* objects,
+                  struct bvh_node *root,
                   struct ray *r) {
   if (max_depth <= 0) {
     return (struct vec){1,1,1};
   } else {
     struct hit hit;
-    if (find_hit(num_objects, objects, r, 0.001, INFINITY, &hit)) {
+    if (find_hit(root, r, 0.001, INFINITY, &hit)) {
       struct scattering s;
       if (scattering(rng, r, &hit, &s)) {
         return
           vec_mul(s.attenuation,
-                  colour(rng, max_depth-1, num_objects, objects, &s.scattered));
+                  colour(rng, max_depth-1, root, &s.scattered));
       } else {
         return (struct vec){0,0,0};
       }
@@ -81,12 +77,22 @@ void render(int max_depth, int nx, int ny, int ns,
   for (int i = 0; i < nx*ny; i++) {
     rgbs[i] = (struct vec){0,0,0};
   }
+  
+  // Build BVH
+  double bvh_start = omp_get_wtime();
+  struct bvh_node *root = build_bvh(objects, num_objects, 0, 0, &rng);
+  double bvh_end = omp_get_wtime();
+  printf("BVH Construction Time: %f seconds\n", bvh_end - bvh_start);
 
-  // We sample the image 'ns' times.
-  for (int iter = 0; iter < ns; iter++) {
-    // Loop across all pixels.
-    for (int x = 0; x < nx; x++) {
-      for (int y = 0; y < ny; y++) {
+  // Loop across all pixels.
+  double render_start = omp_get_wtime();
+  #pragma omp parallel for schedule(dynamic)
+  for (int x = 0; x < nx; x++) {
+    for (int y = 0; y < ny; y++) {
+      struct rng rng;
+      seed_rng(&rng, max_depth ^ nx ^ ny ^ ns ^ x ^ y);
+
+      for (int iter = 0; iter < ns; iter++) {
         double ud = random_double(&rng);
         double vd = random_double(&rng);
         double u = (x + ud) / nx;
@@ -97,12 +103,15 @@ void render(int max_depth, int nx, int ny, int ns,
        // because the image format coordinates assume Y goes down, while our
        // geometrical calculations assume Y goes up. We scale the colour by the
        // inverse of the number of samples.
+       struct vec c = colour(&rng, max_depth, root, &r);
        rgbs[(ny-y-1)*nx+x] =
          vec_add(rgbs[(ny-y-1)*nx+x],
-                 vec_scale(1.0/ns,colour(&rng, max_depth, num_objects, objects, &r)));
+                 vec_scale(1.0/ns, c));
       }
     }
   }
+  double render_end = omp_get_wtime();
+  printf("Rendering Time: %f seconds\n", render_end - render_start);
 
   // Encode as RGB integers.
   for (int i = 0; i < nx*ny; i++) {
@@ -110,6 +119,7 @@ void render(int max_depth, int nx, int ny, int ns,
   }
 
   free(rgbs);
+  free_bvh(root);
 }
 
 void ppm_to_file(char *filename, uint32_t *pixels, int height, int width) {
@@ -173,7 +183,10 @@ int main(int argc, char** argv) {
 
   render(max_depth, nx, ny, ns, num_objects, objects, &cam, argbs);
 
+  double save_start = omp_get_wtime();
   ppm_to_file(out_fname, argbs, ny, nx);
+  double save_end = omp_get_wtime();
+  printf("File Save Time: %f seconds\n", save_end - save_start);
 
   free(argbs);
   free(materials);
